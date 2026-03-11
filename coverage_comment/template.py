@@ -142,6 +142,7 @@ def get_comment_markdown(
     custom_template: str | None = None,
     pr_targets_default_branch: bool = True,
     failure_msg: str | None = None,
+    plain_text_report: str | None = None,
 ):
     loader = CommentLoader(base_template=base_template, custom_template=custom_template)
     env = SandboxedEnvironment(loader=loader)
@@ -190,6 +191,7 @@ def get_comment_markdown(
             marker=marker,
             pr_targets_default_branch=pr_targets_default_branch,
             failure_msg=failure_msg,
+            plain_text_report=plain_text_report,
         )
     except jinja2.exceptions.TemplateError as exc:
         raise TemplateError from exc
@@ -198,6 +200,48 @@ def get_comment_markdown(
         raise MissingMarker()
 
     return comment
+
+
+def get_plain_text_markdown(
+    *,
+    coverage: coverage_module.Coverage,
+    diff_coverage: coverage_module.DiffCoverage,
+    previous_coverage_rate: decimal.Decimal | None,
+    previous_coverage: coverage_module.Coverage | None,
+    files: list[FileInfo],
+    max_files: int | None,
+    count_files: int,
+    subproject_id: str | None = None,
+    failure_msg: str | None = None,
+) -> str:
+    env = SandboxedEnvironment()
+    env.filters["pct"] = pct
+
+    missing_diff_lines = {
+        key: list(value)
+        for key, value in itertools.groupby(
+            diff_grouper.get_diff_missing_groups(
+                coverage=coverage, diff_coverage=diff_coverage
+            ),
+            lambda x: x.file,
+        )
+    }
+
+    try:
+        return env.from_string(read_template_file("comment_plain.md.j2")).render(
+            previous_coverage_rate=previous_coverage_rate,
+            coverage=coverage,
+            diff_coverage=diff_coverage,
+            previous_coverage=previous_coverage,
+            count_files=count_files,
+            max_files=max_files,
+            files=files,
+            missing_diff_lines=missing_diff_lines,
+            subproject_id=subproject_id,
+            failure_msg=failure_msg,
+        )
+    except jinja2.exceptions.TemplateError as exc:
+        raise TemplateError from exc
 
 
 def select_files(
